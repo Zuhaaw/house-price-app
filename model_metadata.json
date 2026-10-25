@@ -1,0 +1,94 @@
+{
+  "problem": "California house price prediction (median house value of a neighbourhood)",
+  "best_algorithm": "Extra Trees",
+  "cv_folds": 10,
+  "cv_mean_rmse": 52085.439928850814,
+  "cv_std_rmse": 2263.498199145316,
+  "cv_mean_mae": 34574.78144835018,
+  "cv_mean_r2": 0.795981281817882,
+  "training_records": 20640,
+  "average_price": 206855.81690891474,
+  "max_price_in_data": 500000.99999999994,
+  "features": [
+    "MedInc",
+    "HouseAge",
+    "AveRooms",
+    "AveBedrms",
+    "Population",
+    "AveOccup",
+    "Latitude",
+    "Longitude"
+  ],
+  "feature_ranges": {
+    "MedInc": {
+      "min": 0.4999,
+      "max": 15.0001,
+      "median": 3.5347999999999997
+    },
+    "HouseAge": {
+      "min": 1.0,
+      "max": 52.0,
+      "median": 29.0
+    },
+    "AveRooms": {
+      "min": 0.8461538461538461,
+      "max": 141.9090909090909,
+      "median": 5.229128787878788
+    },
+    "AveBedrms": {
+      "min": 0.3333333333333333,
+      "max": 34.06666666666667,
+      "median": 1.048780487804878
+    },
+    "Population": {
+      "min": 3.0,
+      "max": 35682.0,
+      "median": 1166.0
+    },
+    "AveOccup": {
+      "min": 0.6923076923076923,
+      "max": 1243.3333333333333,
+      "median": 2.818115654360196
+    },
+    "Latitude": {
+      "min": 32.54,
+      "max": 41.95,
+      "median": 34.26
+    },
+    "Longitude": {
+      "min": -124.35,
+      "max": -114.31,
+      "median": -118.49
+    }
+  },
+  "comparison": {
+    "Extra Trees": {
+      "rank": 1,
+      "mean_rmse": 52085.439928850814,
+      "std_rmse": 2263.498199145316
+    },
+    "MLP Neural Network": {
+      "rank": 2,
+      "mean_rmse": 52298.20215182531,
+      "std_rmse": 1935.6013107833435
+    },
+    "Support Vector Regression": {
+      "rank": 3,
+      "mean_rmse": 58306.191992805005,
+      "std_rmse": 2286.851279397499
+    },
+    "Ridge Regression": {
+      "rank": 4,
+      "mean_rmse": 72933.40628097823,
+      "std_rmse": 2572.3413297433685
+    },
+    "AdaBoost": {
+      "rank": 5,
+      "mean_rmse": 89187.56021383869,
+      "std_rmse": 4453.505933179529
+    }
+  },
+  "trained_on": "2026-10-25 14:13",
+  "python_version": "3.13.16",
+  "sklearn_version": "1.6.1"
+}

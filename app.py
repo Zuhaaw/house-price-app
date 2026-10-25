@@ -1,57 +1,36 @@
-"""
-Flask web app for the California House Price Prediction model (Assignment 3).
 
-Routes
-------
-GET  /              HTML form
-POST /               form submission -> same page with the predicted price
-POST /api/predict    JSON in, JSON out  ({"MedInc": 4.5, ...})
-GET  /api/info       model information (algorithm, cross-validation scores, feature ranges)
-GET  /health         health check used by the cloud platform
-"""
 import json
-import os
+from pathlib import Path
 
 import joblib
 import pandas as pd
-from flask import Flask, jsonify, render_template, request
+import streamlit as st
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-MODEL_FILE = os.path.join(BASE_DIR, "california_house_price_model.pkl")
-METADATA_FILE = os.path.join(BASE_DIR, "model_metadata.json")
+BASE_DIR = Path(__file__).parent
+MODEL_FILE = BASE_DIR / "california_house_price_model.pkl"
+METADATA_FILE = BASE_DIR / "model_metadata.json"
 
-app = Flask(__name__)
+st.set_page_config(page_title="House Price Predictor", page_icon="🏠")
+st.title("🏠 California House Price Predictor")
+st.write("Enter neighborhood details to estimate the house price.")
 
-# ---- Load the trained model and its metadata once, when the server starts ----
-model = None
-metadata = None
-load_error = None
-try:
+@st.cache_resource
+def load_model():
     model = joblib.load(MODEL_FILE)
-    with open(METADATA_FILE) as f:
+    with open(METADATA_FILE, encoding="utf-8") as f:
         metadata = json.load(f)
-except Exception as error:  # the page explains what is missing instead of crashing
-    load_error = f"{type(error).__name__}: {error}"
+    return model, metadata
 
-# Field definitions: label, help text, the value shown first, and hard limits that reject nonsense input
-FIELDS = [
-    {"name": "MedInc", "label": "Median income", "unit": "in $10,000s (3.5 = $35,000)",
-     "default": 4.5, "step": "0.01", "hard": (0.0, 100.0)},
-    {"name": "HouseAge", "label": "Median house age", "unit": "years",
-     "default": 25, "step": "1", "hard": (0.0, 150.0)},
-    {"name": "AveRooms", "label": "Average rooms per household", "unit": "rooms",
-     "default": 5.5, "step": "0.01", "hard": (0.1, 500.0)},
-    {"name": "AveBedrms", "label": "Average bedrooms per household", "unit": "bedrooms",
-     "default": 1.05, "step": "0.01", "hard": (0.1, 200.0)},
-    {"name": "Population", "label": "Population of the neighbourhood", "unit": "people",
-     "default": 1500, "step": "1", "hard": (1.0, 1_000_000.0)},
-    {"name": "AveOccup", "label": "Average household size", "unit": "people per household",
-     "default": 3.0, "step": "0.01", "hard": (0.1, 2000.0)},
-    {"name": "Latitude", "label": "Latitude", "unit": "degrees north",
-     "default": 34.05, "step": "0.01", "hard": (32.0, 43.0)},
-    {"name": "Longitude", "label": "Longitude", "unit": "degrees east (negative in California)",
-     "default": -118.25, "step": "0.01", "hard": (-125.0, -114.0)},
-]
+FIELDS = {
+    "Median income ($10,000s)": ("MedInc", 4.5, 0.01),
+    "Median house age (years)": ("HouseAge", 25.0, 1.0),
+    "Average rooms": ("AveRooms", 5.5, 0.1),
+    "Average bedrooms": ("AveBedrms", 1.05, 0.01),
+    "Population": ("Population", 1500.0, 1.0),
+    "Average household size": ("AveOccup", 3.0, 0.1),
+    "Latitude": ("Latitude", 34.05, 0.01),
+    "Longitude": ("Longitude", -118.25, 0.01),
+}
 
 CITIES = {
     "Los Angeles": (34.05, -118.25),
@@ -61,98 +40,51 @@ CITIES = {
     "Fresno": (36.74, -119.79),
 }
 
+try:
+    model, metadata = load_model()
+except Exception as e:
+    st.error(f"Could not load the model or metadata: {e}")
+    st.info(
+        "Check that california_house_price_model.pkl "
+        "and model_metadata.json exist in your GitHub repository."
+    )
+    st.stop()
 
-def parse_and_validate(values):
-    """Return (clean_values, errors, warnings) for a dict of raw input values."""
-    clean, errors, warnings = {}, {}, []
-    for field in FIELDS:
-        name = field["name"]
-        raw = values.get(name)
-        if raw is None or str(raw).strip() == "":
-            errors[name] = "Enter a value."
-            continue
-        try:
-            number = float(str(raw).strip())
-        except ValueError:
-            errors[name] = "Enter a number."
-            continue
-        low, high = field["hard"]
-        if number != number or not (low <= number <= high):
-            errors[name] = f"Enter a value between {low:g} and {high:g}."
-            continue
-        clean[name] = number
-        # Soft check: a value outside the range seen in training makes the prediction less reliable
-        if metadata:
-            seen = metadata["feature_ranges"].get(name)
-            if seen and not (seen["min"] <= number <= seen["max"]):
-                warnings.append(f"{field['label']} ({number:g}) is outside the range the model was "
-                                f"trained on ({seen['min']:g} to {seen['max']:g}).")
-    return clean, errors, warnings
+city = st.selectbox("Choose a California city", list(CITIES))
+latitude, longitude = CITIES[city]
 
+values = {}
+cols = st.columns(2)
 
-def predict_price(clean):
-    features = metadata["features"]
-    frame = pd.DataFrame([clean])[features]          # same columns, same order as in training
-    price = float(model.predict(frame)[0])
-    return max(price, 0.0)                           # a price cannot be negative
+for i, (label, (name, default, step)) in enumerate(FIELDS.items()):
+    with cols[i % 2]:
+        if name == "Latitude":
+            default = latitude
+        elif name == "Longitude":
+            default = longitude
 
+        values[name] = st.number_input(
+            label,
+            value=float(default),
+            step=float(step),
+            format="%.4f",
+        )
 
-def result_payload(price):
-    rmse = metadata["cv_mean_rmse"]
-    return {
-        "predicted_price": round(price, 2),
-        "typical_error": round(rmse, 2),
-        "likely_range": [round(max(price - rmse, 0.0), 2), round(price + rmse, 2)],
-        "algorithm": metadata["best_algorithm"],
-    }
+if st.button("Predict House Price", type="primary"):
+    try:
+        features = metadata["features"]
+        frame = pd.DataFrame([values])[features]
+        price = max(float(model.predict(frame)[0]), 0.0)
 
+        rmse = float(metadata["cv_mean_rmse"])
 
-@app.route("/", methods=["GET", "POST"])
-def home():
-    values = {f["name"]: f["default"] for f in FIELDS}
-    errors, warnings, result = {}, [], None
+        st.success(f"Estimated house price: ${price * 100000:,.2f}")
+        st.caption(
+            "The model's target scale determines the price conversion. "
+            "Verify whether the model predicts units of $100,000."
+        )
+        st.write(f"Model: {metadata['best_algorithm']}")
+        st.write(f"Typical prediction error (model units): {rmse:.3f}")
 
-    if request.method == "POST":
-        values = {f["name"]: request.form.get(f["name"], "") for f in FIELDS}
-        if load_error:
-            errors["_model"] = "The model is not available on the server."
-        else:
-            clean, errors, warnings = parse_and_validate(values)
-            if not errors:
-                result = result_payload(predict_price(clean))
-
-    return render_template("index.html", fields=FIELDS, cities=CITIES, values=values, errors=errors,
-                           warnings=warnings, result=result, metadata=metadata, load_error=load_error)
-
-
-@app.route("/api/predict", methods=["POST"])
-def api_predict():
-    if load_error:
-        return jsonify({"error": "Model not available", "detail": load_error}), 503
-    payload = request.get_json(silent=True)
-    if not isinstance(payload, dict):
-        return jsonify({"error": "Send a JSON object with the 8 input values."}), 400
-    clean, errors, warnings = parse_and_validate(payload)
-    if errors:
-        return jsonify({"error": "Invalid input", "details": errors}), 400
-    response = result_payload(predict_price(clean))
-    response["warnings"] = warnings
-    return jsonify(response)
-
-
-@app.route("/api/info")
-def api_info():
-    if load_error:
-        return jsonify({"error": "Model not available", "detail": load_error}), 503
-    return jsonify(metadata)
-
-
-@app.route("/health")
-def health():
-    if load_error:
-        return jsonify({"status": "error", "detail": load_error}), 503
-    return jsonify({"status": "ok", "algorithm": metadata["best_algorithm"]})
-
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5001)), debug=False)
+    except Exception as e:
+        st.error(f"Prediction failed: {e}")
